@@ -1,0 +1,242 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+library(tidyverse)
+library(naniar)
+library(scales)
+library(ggplot2)
+library(forcats)
+library(gridExtra)
+library(caret)
+library(cluster)
+library(factoextra)
+library(stats)
+library(dplyr)
+library(ggfortify)
+library(GGally)
+```
+
+```{r}
+#Import data
+df = read.csv("IRIS.csv")
+```
+
+```{r}
+#View data
+View(df)
+```
+
+```{r}
+glimpse(df)
+```
+
+```{r}
+#First 6 rows
+head(df)
+```
+```{r}
+#Check for missing/null values
+gg_miss_which(df)
+```
+```{r}
+na.omit(df)
+```
+
+
+```{r}
+#Frequency of each species
+table(df$species)
+```
+
+```{r}
+#Number of species different
+unique_species <- unique(df$species)
+```
+
+
+```{r}
+#Pie chart
+
+colors <- rainbow(length(unique_species))
+
+df %>%
+  count(species, sort = TRUE) %>%
+  mutate(perc = paste0(round(n / sum(n) * 100.0),'%')) %>%
+  ggplot(aes(x = "", y = perc, fill = species)) +
+  geom_bar(
+    stat = "identity",
+    width = 1,
+    color = "black",
+    size = 1
+  ) + 
+  coord_polar("y", start = 0) + 
+  geom_text(
+    aes(y = perc, label = perc), 
+    position = position_stack(vjust = 0.5),
+    size = 8,
+    color = "white",
+    fontface = "bold"
+  ) + 
+  scale_fill_manual(values = colors) + 
+  theme_void() + 
+  labs(
+    title = "Percentage of Species",
+    subtitle = "Proportion of Species",
+    caption = "Kaggle: Iris Dataset",
+    fill = "Species"
+  )
+
+```
+
+```{r}
+#Iris-setosa Iris-versicolor  Iris-virginica 
+
+
+plot_multi_histogram <- function(df, feature, label_column) {
+    plt <- ggplot(df, aes(x=eval(parse(text=feature)), fill=eval(parse(text=label_column)))) +
+    geom_histogram(alpha=0.7, position="identity", aes(y = ..density..), color="black") +
+    geom_density(alpha=0.7) +
+    labs(x=feature, y = "Density")
+    plt + guides(fill=guide_legend(title=label_column))
+}
+
+p1 <- plot_multi_histogram(df, "sepal_width", "species")
+p2 <- plot_multi_histogram(df, "sepal_length", "species")
+p3 <- plot_multi_histogram(df, "petal_length", "species")
+p4 <- plot_multi_histogram(df, "petal_width", "species")
+
+
+grid_plot <- grid.arrange(p1,p2,p3,p4, ncol = 2)
+ggsave("histogram_plot.png", plot = grid_plot, width = 10, height = 8, units = "in")
+
+```
+
+```{r}
+p1 <- df %>% ggplot(aes(x=species,y=petal_length,fill=species)) +
+  geom_boxplot()  
+
+p2 <- df %>% ggplot(aes(x=species,y=sepal_length,fill=species)) +
+  geom_boxplot()  
+
+p3 <- df %>% ggplot(aes(x=species,y=sepal_width,fill=species)) +
+  geom_boxplot()  
+
+p4 <- df %>% ggplot(aes(x=species,y=petal_width,fill=species)) +
+  geom_boxplot()  
+
+grid_plot <- grid.arrange(p1,p2,p3,p4, ncol = 2)
+ggsave("box_plot.png", plot = grid_plot, width = 10, height = 8, units = "in")
+```
+
+```{r}
+p1 <- ggplot(df, aes(x = sepal_length, y = sepal_width, fill = species, color = species)) +
+  geom_point() +
+  labs(title = "Scatterplot of Sepal Length vs Petal Width",
+       x = "Sepal Length",
+       y = "Sepal Width")
+
+p2 <- ggplot(df, aes(x = sepal_length, y = petal_length, fill = species, color = species)) +
+  geom_point() +
+  labs(title = "Scatterplot of Sepal Length vs Petal Length",
+       x = "Sepal Length",
+       y = "Petal Length")
+
+p3 <- ggplot(df, aes(x = sepal_length, y = petal_width, fill = species, color = species)) +
+  geom_point() +
+  labs(title = "Scatterplot of Sepal Length vs Petal Width",
+       x = "Sepal Length",
+       y = "Petal Width")
+
+p4 <- ggplot(df, aes(x = sepal_width, y = petal_length, fill = species, color = species)) +
+  geom_point() +
+  labs(title = "Scatterplot of Petal Width vs Sepal Length",
+       x = "Sepal Width",
+       y = "Petal Length")
+
+p5 <- ggplot(df, aes(x = sepal_width, y = petal_width, fill = species, color = species)) +
+  geom_point() +
+  labs(title = "Scatterplot of Petal Width vs Sepal Length",
+       x = "Sepal Width",
+       y = "Petal Width")
+
+p6 <- ggplot(df, aes(x = petal_length, y = petal_width, fill = species, color = species)) +
+  geom_point() +
+  labs(title = "Scatterplot of Petal Width vs Sepal Length",
+       x = "Petal Length",
+       y = "Petal Width")
+
+grid_plot <- grid.arrange(p1,p2,p3,p4, p5, p6, ncol = 2)
+ggsave("scatter_plot.png", plot = grid_plot, width = 10, height = 8, units = "in")
+```
+```{r}
+ggpairs(df,mapping = ggplot2::aes(color = df$species),upper = list(continuous = "cor", discrete = "box"),lower = list(continuous = "cor", discrete="dot"))
+```
+
+## Performing Kmeans Clustering steps:
+Choose the number of clusters k
+Select k random points from the data as centroids
+Assign all the points to the closest cluster centroid
+Recompute the centroids of newly formed clusters
+Repeat steps 3 and 4
+
+## Using the elbow method for optimal number of clusters
+```{r}
+#Finding the optimal number of clusters for k-means classification
+x <- scale(df[, 1:4])
+
+
+
+fviz_nbclust(x, kmeans, method = "wss")
+```
+
+
+##Gap statistics to choose the number of K
+Locate the biggest jump within cluster distance
+```{r}
+#calculate gap statistic based on number of clusters
+gap_stat <- clusGap(x,
+                    FUN = kmeans,
+                    nstart = 25,
+                    K.max = 10,
+                    B = 50)
+
+#plot number of clusters vs. gap statistic
+print(gap_stat,method="firstmax")
+fviz_gap_stat(gap_stat)
+```
+
+
+```{r}
+set.seed(123)
+#Cluster = 2
+k <- 2
+
+kmeans_result <- kmeans(x, centers = k)
+str(kmeans_result)
+cluster_assignments <- kmeans_result$cluster
+cluster_assignments
+```
+```{r}
+autoplot(kmeans_result,x,frame=TRUE)
+```
+
+```{r}
+fviz_cluster(kmeans_result, x, geom = "point", ellipse.type = "norm")
+```
+```{r}
+aggregate(x, by=list(cluster=kmeans_result$cluster), mean)
+```
+```{r}
+final_result <- cbind(df, cluster = kmeans_result$cluster)
+final_result
+```
+
+
+
+
+
+
+
